@@ -3,3 +3,4 @@
 .env
 *.tfstate*
 *.lock.hcl
+*.idea
