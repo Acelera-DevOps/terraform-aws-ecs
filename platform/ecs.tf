@@ -16,18 +16,45 @@ data "terraform_remote_state" "infra" {
   }
 }
 
-
 resource "aws_ecs_cluster" "production-fargate" {
   name = "Production-Fargate"
+
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
+
+  tags = {
+    Name = "Production-Fargate"
+  }
 }
 
 resource "aws_alb" "ecs_cluster_alb" {
-  name            = "${var.ecs_cluster_name}-ALB"
-  internal        = false
-  security_groups = [aws_security_group.ecs_alb_security_group.id]
-  subnets         = data.terraform_remote_state.infra.outputs.public_subnets
+  name                       = "${var.ecs_cluster_name}-ALB"
+  internal                   = false
+  load_balancer_type         = "application"
+  drop_invalid_header_fields = true
+  security_groups            = [aws_security_group.ecs_alb_security_group.id]
+  subnets                    = data.terraform_remote_state.infra.outputs.public_subnets
+
   tags = {
     Name = "${var.ecs_cluster_name}-ALB"
+  }
+}
+
+resource "aws_alb_listener" "ecs_alb_http_redirect" {
+  load_balancer_arn = aws_alb.ecs_cluster_alb.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
   }
 }
 
@@ -35,12 +62,14 @@ resource "aws_alb_listener" "ecs_alb_https_listener" {
   load_balancer_arn = aws_alb.ecs_cluster_alb.arn
   port              = 443
   protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
   certificate_arn   = aws_acm_certificate.ecs_domain_certificate.arn
+
   default_action {
     type             = "forward"
     target_group_arn = aws_alb_target_group.ecs_default_target_group.arn
   }
+
   depends_on = [aws_alb_target_group.ecs_default_target_group]
 }
 
@@ -49,6 +78,7 @@ resource "aws_alb_target_group" "ecs_default_target_group" {
   port     = 80
   protocol = "HTTP"
   vpc_id   = data.terraform_remote_state.infra.outputs.vpc_id
+
   tags = {
     Name = "${var.ecs_cluster_name}-TG"
   }
@@ -58,57 +88,79 @@ resource "aws_route53_record" "ecs_load_balancer_record" {
   name    = "*.${var.ecs_domain_name}"
   type    = "A"
   zone_id = data.aws_route53_zone.ecs_domain.zone_id
+
   alias {
-    evaluate_target_health = false
+    evaluate_target_health = true
     name                   = aws_alb.ecs_cluster_alb.dns_name
     zone_id                = aws_alb.ecs_cluster_alb.zone_id
   }
 }
 
 resource "aws_iam_role" "ecs_cluster-role" {
-  name               = "${var.ecs_cluster_name}-IAM-Role"
-  assume_role_policy = <<EOF
-{
-"Version": "2012-10-17",
-"Statement": [
- {
-   "Effect": "Allow",
-   "Principal": {
-     "Service": ["ecs.amazonaws.com", "ec2.amazonaws.com", "application-autoscaling.amazonaws.com"]
-   },
-   "Action": "sts:AssumeRole"
-  }
-  ]
- }
-EOF
-}
-resource "aws_iam_role_policy" "ecs_cluster_policy" {
   name = "${var.ecs_cluster_name}-IAM-Role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = [
+            "ecs.amazonaws.com",
+            "application-autoscaling.amazonaws.com"
+          ]
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "ecs_cluster_policy" {
+  name = "${var.ecs_cluster_name}-PoLP-Policy"
   role = aws_iam_role.ecs_cluster-role.id
 
-  policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ecs:*",
-        "ec2:*",
-        "elasticloadbalancing:*",
-        "ecr:*",
-        "dynamodb:*",
-        "cloudwatch:*",
-        "s3:*",
-        "rds:*",
-        "sqs:*",
-        "sns:*",
-        "logs:*",
-        "ssm:*"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-EOF
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ECSClusterAndServiceManagement"
+        Effect = "Allow"
+        Action = [
+          "ecs:DescribeServices",
+          "ecs:UpdateService",
+          "ecs:DescribeTaskDefinition",
+          "ecs:RegisterTaskDefinition",
+          "ecs:ListTasks",
+          "ecs:DescribeTasks"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "TargetGroupRegistration"
+        Effect = "Allow"
+        Action = [
+          "elasticloadbalancing:DescribeTargetGroups",
+          "elasticloadbalancing:DescribeTargetHealth",
+          "elasticloadbalancing:RegisterTargets",
+          "elasticloadbalancing:DeregisterTargets",
+          "elasticloadbalancing:DescribeListeners",
+          "elasticloadbalancing:DescribeRules"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "CloudWatchAlarmsForAutoScaling"
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:DescribeAlarms",
+          "cloudwatch:PutMetricAlarm",
+          "cloudwatch:DeleteAlarms",
+          "cloudwatch:GetMetricStatistics",
+          "cloudwatch:GetMetricData"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
 }

@@ -2,6 +2,10 @@ resource "aws_acm_certificate" "ecs_domain_certificate" {
   domain_name       = "*.${var.ecs_domain_name}"
   validation_method = "DNS"
 
+  lifecycle {
+    create_before_destroy = true
+  }
+
   tags = {
     Name = "${var.ecs_cluster_name}-Certificate"
   }
@@ -14,11 +18,11 @@ data "aws_route53_zone" "ecs_domain" {
 
 resource "aws_route53_record" "cert_validation" {
   for_each = {
-  for ecs in aws_acm_certificate.ecs_domain_certificate.domain_validation_options : ecs.domain_name => {
-    name   = ecs.resource_record_name
-    record = ecs.resource_record_value
-    type   = ecs.resource_record_type
-  }
+    for ecs in aws_acm_certificate.ecs_domain_certificate.domain_validation_options : ecs.domain_name => {
+      name   = ecs.resource_record_name
+      record = ecs.resource_record_value
+      type   = ecs.resource_record_type
+    }
   }
 
   allow_overwrite = true

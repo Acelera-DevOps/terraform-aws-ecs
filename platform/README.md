@@ -1,67 +1,43 @@
-## Provision
+# Layer 2 — ECS Fargate Platform (`platform/`)
 
-```shell 
-$ terraform init -backend-config="infra-prod.config"
-$ terraform plan -var-file="production.tfvars"
-$ terraform apply -var-file="production.tfvars"
+Provisions the shared AWS ECS Fargate cluster with CloudWatch Container Insights enabled, an Application Load Balancer (ALB) enforcing TLS 1.3 (`ELBSecurityPolicy-TLS13-1-2-2021-06`) and HTTP-to-HTTPS `301` redirect, automated ACM wildcard DNS certificate validation via Route53, hardened Security Groups (zero public SSH), and Least-Privilege (PoLP) IAM roles.
+
+## Provisioning
+
+```bash
+terraform init -backend-config="platform-prod.config"
+terraform plan -var-file="production.tfvars"
+terraform apply -var-file="production.tfvars"
 ```
-<!-- BEGIN_TF_DOCS -->
+
 ## Requirements
-
-No requirements.
-
-## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | n/a |
-| <a name="provider_terraform"></a> [terraform](#provider\_terraform) | n/a |
-
-## Modules
-
-No modules.
-
-## Resources
-
-| Name | Type |
-|------|------|
-| [aws_acm_certificate.ecs_domain_certificate](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/acm_certificate) | resource |
-| [aws_acm_certificate_validation.ecs_domain_certificate_validation](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/acm_certificate_validation) | resource |
-| [aws_alb.ecs_cluster_alb](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/alb) | resource |
-| [aws_alb_listener.ecs_alb_https_listener](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/alb_listener) | resource |
-| [aws_alb_target_group.ecs_default_target_group](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/alb_target_group) | resource |
-| [aws_ecs_cluster.production-fargate](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecs_cluster) | resource |
-| [aws_iam_role.ecs_cluster-role](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role) | resource |
-| [aws_iam_role_policy.ecs_cluster_policy](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_role_policy) | resource |
-| [aws_route53_record.cert_validation](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/route53_record) | resource |
-| [aws_route53_record.ecs_load_balancer_record](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/route53_record) | resource |
-| [aws_security_group.ecs_alb_security_group](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group) | resource |
-| [aws_security_group.ecs_security_group](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group) | resource |
-| [aws_route53_zone.ecs_domain](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/route53_zone) | data source |
-| [terraform_remote_state.infra](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/data-sources/remote_state) | data source |
+| terraform | `>= 1.6.0` |
+| aws | `~> 5.0` |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| <a name="input_ecs_cluster_name"></a> [ecs\_cluster\_name](#input\_ecs\_cluster\_name) | n/a | `any` | n/a | yes |
-| <a name="input_ecs_domain_name"></a> [ecs\_domain\_name](#input\_ecs\_domain\_name) | n/a | `any` | n/a | yes |
-| <a name="input_internet_cidr_blocks"></a> [internet\_cidr\_blocks](#input\_internet\_cidr\_blocks) | n/a | `any` | n/a | yes |
-| <a name="input_region"></a> [region](#input\_region) | n/a | `string` | `"us-east-2"` | no |
-| <a name="input_remote_state_bucket"></a> [remote\_state\_bucket](#input\_remote\_state\_bucket) | n/a | `any` | n/a | yes |
-| <a name="input_remote_state_key"></a> [remote\_state\_key](#input\_remote\_state\_key) | n/a | `any` | n/a | yes |
+| `region` | AWS Region | `string` | `"us-east-2"` | no |
+| `remote_state_bucket` | S3 bucket storing Layer 1 (`infra`) remote state | `string` | n/a | yes |
+| `remote_state_key` | S3 key for Layer 1 (`infra`) state file | `string` | n/a | yes |
+| `ecs_cluster_name` | Name prefix for ECS Cluster and ALB resources | `string` | n/a | yes |
+| `ecs_domain_name` | Root Route53 domain name (e.g., `eriktonon.com`) | `string` | n/a | yes |
+| `internet_cidr_blocks` | Allowed ingress CIDR block for ALB | `string` | `"0.0.0.0/0"` | yes |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
-| <a name="output_ecs_alb_listener_arn"></a> [ecs\_alb\_listener\_arn](#output\_ecs\_alb\_listener\_arn) | n/a |
-| <a name="output_ecs_cluster_name"></a> [ecs\_cluster\_name](#output\_ecs\_cluster\_name) | n/a |
-| <a name="output_ecs_cluster_role_arn"></a> [ecs\_cluster\_role\_arn](#output\_ecs\_cluster\_role\_arn) | n/a |
-| <a name="output_ecs_cluster_role_name"></a> [ecs\_cluster\_role\_name](#output\_ecs\_cluster\_role\_name) | n/a |
-| <a name="output_ecs_domain_name"></a> [ecs\_domain\_name](#output\_ecs\_domain\_name) | n/a |
-| <a name="output_ecs_private_subnets"></a> [ecs\_private\_subnets](#output\_ecs\_private\_subnets) | n/a |
-| <a name="output_ecs_public_subnets"></a> [ecs\_public\_subnets](#output\_ecs\_public\_subnets) | n/a |
-| <a name="output_vpc_cidr_block"></a> [vpc\_cidr\_block](#output\_vpc\_cidr\_block) | n/a |
-| <a name="output_vpc_id"></a> [vpc\_id](#output\_vpc\_id) | n/a |
-<!-- END_TF_DOCS -->
+| `vpc_id` | VPC ID inherited from Layer 1 (`infra`) |
+| `vpc_cidr_block` | VPC CIDR block inherited from Layer 1 (`infra`) |
+| `ecs_alb_listener_arn` | HTTPS (443) ALB Listener ARN for host-header routing rules |
+| `ecs_cluster_name` | ECS Fargate Cluster name |
+| `ecs_cluster_role_name` | ECS Cluster IAM role name |
+| `ecs_cluster_role_arn` | ECS Cluster IAM role ARN |
+| `ecs_domain_name` | Configured Route53 domain name |
+| `ecs_public_subnets` | Public Subnet IDs |
+| `ecs_private_subnets` | Private Subnet IDs |
